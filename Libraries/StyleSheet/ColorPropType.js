@@ -35,7 +35,7 @@ var colorPropType = function(isRequired, props, propName, componentName, locatio
     return;
   }
 
-  if (normalizeColor(color) === null) {
+  if (normalizeColor(color) === null && typeof(color._interpolation) !== 'function') {
     var locationName = ReactPropTypeLocationNames[location];
     return new Error(
       'Invalid ' + locationName + ' `' + (propFullName || propName) +
