@@ -18,175 +18,188 @@ import type {
   NavigationState,
 } from 'NavigationTypeDefinition';
 
-function getParent(state: NavigationRoute): ?NavigationState {
-  if (
-    (state instanceof Object) &&
-    (state.children instanceof Array) &&
-    (state.children[0] !== undefined) &&
-    (typeof state.index === 'number') &&
-    (state.children[state.index] !== undefined)
-  ) {
-    return state;
-  }
-  return null;
+/**
+ * Utilities to perform atomic operation with navigate state and routes.
+ */
+
+/**
+ * Gets a route by key
+ */
+function get(state: NavigationState, key: string): ?NavigationRoute {
+  return state.routes.find(route => route.key === key) || null;
 }
 
-function get(state: NavigationRoute, key: string): ?NavigationRoute {
-  const parentState = getParent(state);
-  if (!parentState) {
-    return null;
-  }
-  const childState = parentState.children.find(child => child.key === key);
-  return childState || null;
+/**
+ * Returns the first index at which a given route's key can be found in the
+ * routes of the navigation state, or -1 if it is not present.
+ */
+function indexOf(state: NavigationState, key: string): number {
+  return state.routes.map(route => route.key).indexOf(key);
 }
 
-function indexOf(state: NavigationRoute, key: string): ?number {
-  const parentState = getParent(state);
-  if (!parentState) {
-    return null;
-  }
-  const index = parentState.children.map(child => child.key).indexOf(key);
-  if (index === -1) {
-    return null;
-  }
-  return index;
+/**
+ * Returns `true` at which a given route's key can be found in the
+ * routes of the navigation state.
+ */
+function has(state: NavigationState, key: string): boolean {
+  return !!state.routes.some(route => route.key === key);
 }
 
-function push(state: NavigationState, newChildState: NavigationRoute): NavigationState {
-  var lastChildren: Array<NavigationRoute> = state.children;
+/**
+ * Pushes a new route into the navigation state.
+ * Note that this moves the index to the positon to where the last route in the
+ * stack is at.
+ */
+function push(state: NavigationState, route: NavigationRoute): NavigationState {
+  invariant(
+    indexOf(state, route.key) === -1,
+    'should not push route with duplicated key %s',
+    route.key,
+  );
+
+  const routes = [
+    ...state.routes,
+    route,
+  ];
+
   return {
     ...state,
-    children: [
-      ...lastChildren,
-      newChildState,
-    ],
-    index: lastChildren.length,
+    index: routes.length - 1,
+    routes,
   };
 }
 
+/**
+ * Pops out a route from the navigation state.
+ * Note that this moves the index to the positon to where the last route in the
+ * stack is at.
+ */
 function pop(state: NavigationState): NavigationState {
-  const lastChildren = state.children;
+  if (state.index <= 0) {
+    // [Note]: Over-popping does not throw error. Instead, it will be no-op.
+    return state;
+  }
+  const routes = state.routes.slice(0, -1);
   return {
     ...state,
-    children: lastChildren.slice(0, lastChildren.length - 1),
-    index: lastChildren.length - 2,
+    index: routes.length - 1,
+    routes,
   };
 }
 
-function reset(state: NavigationRoute, nextChildren: ?Array<NavigationRoute>, nextIndex: ?number): NavigationRoute {
-  const parentState = getParent(state);
-  if (!parentState) {
+/**
+ * Sets the focused route of the navigation state by index.
+ */
+function jumpToIndex(state: NavigationState, index: number): NavigationState {
+  if (index === state.index) {
     return state;
   }
-  const children = nextChildren || parentState.children;
-  const index = nextIndex == null ? parentState.index : nextIndex;
-  if (children === parentState.children && index === parentState.index) {
-    return state;
-  }
+
+  invariant(!!state.routes[index], 'invalid index %s to jump to', index);
+
   return {
-    ...parentState,
-    children,
+    ...state,
     index,
   };
 }
 
-function set(state: ?NavigationRoute, key: string, nextChildren: Array<NavigationRoute>, nextIndex: number): NavigationRoute {
-  if (!state) {
-    return {
-      children: nextChildren,
-      index: nextIndex,
-      key,
-    };
+/**
+ * Sets the focused route of the navigation state by key.
+ */
+function jumpTo(state: NavigationState, key: string): NavigationState {
+  const index = indexOf(state, key);
+  return jumpToIndex(state, index);
+}
+
+/**
+ * Replace a route by a key.
+ * Note that this moves the index to the positon to where the new route in the
+ * stack is at.
+ */
+function replaceAt(
+  state: NavigationState,
+  key: string,
+  route: NavigationRoute,
+): NavigationState {
+  const index = indexOf(state, key);
+  return replaceAtIndex(state, index, route);
+}
+
+/**
+ * Replace a route by a index.
+ * Note that this moves the index to the positon to where the new route in the
+ * stack is at.
+ */
+function replaceAtIndex(
+  state: NavigationState,
+  index: number,
+  route: NavigationRoute,
+): NavigationState {
+  invariant(
+    !!state.routes[index],
+    'invalid index %s for replacing route %s',
+    index,
+    route.key,
+  );
+
+  if (state.routes[index] === route) {
+    return state;
   }
-  const parentState = getParent(state);
-  if (!parentState) {
-    return {
-      children: nextChildren,
-      index: nextIndex,
-      key,
-    };
-  }
-  if (nextChildren === parentState.children && nextIndex === parentState.index && key === parentState.key) {
-    return parentState;
-  }
+
+  const routes = state.routes.slice();
+  routes[index] = route;
+
   return {
-    ...parentState,
-    children: nextChildren,
+    ...state,
+    index,
+    routes,
+  };
+}
+
+/**
+ * Resets all routes.
+ * Note that this moves the index to the positon to where the last route in the
+ * stack is at if the param `index` isn't provided.
+ */
+function reset(
+  state: NavigationState,
+  routes: Array<NavigationRoute>,
+  index?: number,
+): NavigationState {
+  invariant(
+    routes.length && Array.isArray(routes),
+    'invalid routes to replace',
+  );
+
+  const nextIndex: number = index === undefined ? routes.length - 1 : index;
+
+  if (state.routes.length === routes.length && state.index === nextIndex) {
+    const compare = (route, ii) => routes[ii] === route;
+    if (state.routes.every(compare)) {
+      return state;
+    }
+  }
+
+  invariant(!!routes[nextIndex], 'invalid index %s to reset', nextIndex);
+
+  return {
+    ...state,
     index: nextIndex,
-    key,
-  };
-}
-
-function jumpToIndex(state: NavigationRoute, index: number): NavigationRoute {
-  const parentState = getParent(state);
-  if (parentState && parentState.index === index) {
-    return parentState;
-  }
-  return {
-    ...parentState,
-    index,
-  };
-}
-
-function jumpTo(state: NavigationRoute, key: string): NavigationRoute {
-  const parentState = getParent(state);
-  if (!parentState) {
-    return state;
-  }
-  const index = parentState.children.indexOf(parentState.children.find(child => child.key === key));
-  invariant(
-    index !== -1,
-    'Cannot find child with matching key in this NavigationRoute'
-  );
-  return {
-    ...parentState,
-    index,
-  };
-}
-
-function replaceAt(state: NavigationRoute, key: string, newState: NavigationRoute): NavigationRoute {
-  const parentState = getParent(state);
-  if (!parentState) {
-    return state;
-  }
-  const children = [...parentState.children];
-  const index = parentState.children.indexOf(parentState.children.find(child => child.key === key));
-  invariant(
-    index !== -1,
-    'Cannot find child with matching key in this NavigationRoute'
-  );
-  children[index] = newState;
-  return {
-    ...parentState,
-    children,
-  };
-}
-
-function replaceAtIndex(state: NavigationRoute, index: number, newState: NavigationRoute): NavigationRoute {
-  const parentState = getParent(state);
-  if (!parentState) {
-    return state;
-  }
-  const children = [...parentState.children];
-  children[index] = newState;
-  return {
-    ...parentState,
-    children,
+    routes,
   };
 }
 
 const NavigationStateUtils = {
-  getParent,
   get: get,
+  has,
   indexOf,
-  push,
-  pop,
-  reset,
-  set: set,
-  jumpToIndex,
   jumpTo,
+  jumpToIndex,
+  pop,
+  push,
   replaceAt,
   replaceAtIndex,
+  reset,
 };
 
 module.exports = NavigationStateUtils;

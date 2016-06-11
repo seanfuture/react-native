@@ -43,8 +43,7 @@ const navigationRoute = PropTypes.shape({
 /* navigationRoute  */
 const navigationState = PropTypes.shape({
   index: PropTypes.number.isRequired,
-  key: PropTypes.string.isRequired,
-  children: PropTypes.arrayOf(navigationRoute),
+  routes: PropTypes.arrayOf(navigationRoute),
 });
 
 /* NavigationLayout */
@@ -68,7 +67,6 @@ const scene = PropTypes.shape({
 const SceneRendererProps = {
   layout: layout.isRequired,
   navigationState: navigationState.isRequired,
-  onNavigate: PropTypes.func.isRequired,
   position: animatedValue.isRequired,
   progress: animatedValue.isRequired,
   scene: scene.isRequired,
@@ -102,7 +100,6 @@ function extractSceneRendererProps(
   return {
     layout: props.layout,
     navigationState: props.navigationState,
-    onNavigate: props.onNavigate,
     position: props.position,
     progress: props.progress,
     scene: props.scene,
