@@ -6,4 +6,5 @@
 # of patent rights can be found in the PATENTS file in the same directory.
 
 # 2048 is the max for non root users on Mac
-ulimit -n 2048
+# -- No longer setting ulimit due to 'Operation not permitted' on Mac OS X
+# ulimit -n 2048
